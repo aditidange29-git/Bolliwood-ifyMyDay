@@ -6,7 +6,10 @@
       "Effect": "Allow",
       "Principal": "*",
       "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::bollywood-posters-353842237441/posters/*"
+      "Resource": [
+        "arn:aws:s3:::bollywood-posters-353842237441/posters/*",
+        "arn:aws:s3:::bollywood-posters-353842237441/audio/*"
+      ]
     }
   ]
 }

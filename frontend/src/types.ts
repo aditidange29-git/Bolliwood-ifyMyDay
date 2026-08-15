@@ -5,8 +5,26 @@ export interface TrailerResponse {
   posterUrl: string;
 }
 
+export interface RemixResponse extends TrailerResponse {
+  genre: string;
+}
+
 export interface StoryResponse {
   story: string;
+}
+
+export interface NarrateResponse {
+  audioUrl: string;
+  speechMarks: SpeechMark[];
+  cached: boolean;
+}
+
+export interface SpeechMark {
+  time: number;   // ms offset from audio start
+  type: 'word' | 'sentence';
+  start: number;  // char offset in input text
+  end: number;
+  value: string;  // the word/sentence text
 }
 
 export interface GalleryEntry {
@@ -22,9 +40,12 @@ export interface GalleryResponse {
   entries: GalleryEntry[];
 }
 
+export type Genre = 'horror' | 'romance' | 'comedy' | 'action' | 'thriller';
+
 export type AppState =
   | 'idle'
   | 'loading_trailer'
   | 'trailer_ready'
+  | 'loading_remix'
   | 'loading_story'
   | 'story_ready';

@@ -1,14 +1,17 @@
 """
 Bollywood-ify My Day — Lambda handler
 Actions:
-  trailer : Nova Lite (text) → Pollinations.ai Flux (image) → S3 upload → return script + posterUrl
-  story   : Nova Lite (text) → return full dramatic story
-  gallery : DynamoDB scan → return last 10 entries
+  trailer : Nova Lite (text) → Pollinations Flux (image) → S3 → return script + posterUrl
+  remix   : Nova Lite (genre-flavoured text) → Pollinations (genre poster) → S3 → return result
+  story   : Nova Lite → dramatic short story
+  narrate : Polly SSML synthesis + speech marks → S3 cache → return audioUrl + marks
+  gallery : DynamoDB scan → last 10 entries
 """
 
 import json
 import os
 import uuid
+import base64
 import logging
 import urllib.request
 import urllib.parse
@@ -25,14 +28,47 @@ BUCKET_NAME = os.environ.get("BUCKET_NAME", "bollywood-posters-353842237441")
 TABLE_NAME  = os.environ.get("TABLE_NAME",  "bollywood-logs")
 REGION      = os.environ.get("AWS_REGION_NAME", "us-east-1")
 
-NOVA_LITE_ID = "amazon.nova-lite-v1:0"
-
-# Pollinations.ai Flux — free, no API key, pure HTTPS GET
+NOVA_LITE_ID      = "amazon.nova-lite-v1:0"
 POLLINATIONS_BASE = "https://image.pollinations.ai/prompt"
+
+# ── Genre config ──────────────────────────────────────────────────────────────
+GENRE_STYLES = {
+    "horror": {
+        "tone": "terrifying Bollywood horror movie — dark, suspenseful, eerie atmosphere, "
+                "jump-scare moments, haunted settings, psychological dread",
+        "poster": "dark moody horror poster, deep shadows, blood red and black color palette, "
+                  "eerie mist, haunted atmosphere, dramatic horror lighting, gothic style",
+    },
+    "romance": {
+        "tone": "sweeping Bollywood romance — passionate love, longing gazes, rain scenes, "
+                "heartfelt emotions, poetic dialogues, eternal love story",
+        "poster": "romantic Bollywood poster, soft pink and gold tones, flower petals, "
+                  "glowing warm light, two silhouettes, dreamy soft-focus atmosphere",
+    },
+    "comedy": {
+        "tone": "hilarious Bollywood comedy — slapstick chaos, misunderstandings, "
+                "absurd situations, laugh-out-loud punchlines, over-the-top reactions",
+        "poster": "bright colorful comedy poster, exaggerated cartoon expressions, "
+                  "bold yellow and orange palette, confetti, fun bubbly energy, slapstick style",
+    },
+    "action": {
+        "tone": "explosive Bollywood action blockbuster — car chases, fight sequences, "
+                "heroic one-liners, adrenaline-pumping stunts, larger-than-life hero",
+        "poster": "action movie poster, explosive orange and blue palette, dynamic action pose, "
+                  "fire and sparks, muscular hero silhouette, cinematic power, high energy",
+    },
+    "thriller": {
+        "tone": "gripping Bollywood psychological thriller — conspiracy, betrayal, "
+                "plot twists, tense atmosphere, morally ambiguous characters, shocking reveals",
+        "poster": "noir thriller poster, cool blue and grey tones, dramatic shadows, "
+                  "mysterious silhouette, tense atmosphere, minimal stark composition",
+    },
+}
 
 # ── AWS clients ───────────────────────────────────────────────────────────────
 bedrock = boto3.client("bedrock-runtime", region_name=REGION)
 s3      = boto3.client("s3",              region_name=REGION)
+polly   = boto3.client("polly",           region_name=REGION)
 dynamo  = boto3.resource("dynamodb",      region_name=REGION)
 table   = dynamo.Table(TABLE_NAME)
 
@@ -52,17 +88,11 @@ def cors_response(status: int, body: dict) -> dict:
 
 
 def invoke_nova_lite(prompt: str) -> str:
-    """Call Nova Lite with exponential backoff on throttle. Returns text."""
+    """Call Nova Lite with exponential backoff on throttle."""
     import time
     payload = {
-        "messages": [
-            {"role": "user", "content": [{"text": prompt}]}
-        ],
-        "inferenceConfig": {
-            "maxTokens": 1024,
-            "temperature": 0.9,
-            "topP": 0.95,
-        },
+        "messages": [{"role": "user", "content": [{"text": prompt}]}],
+        "inferenceConfig": {"maxTokens": 1024, "temperature": 0.9, "topP": 0.95},
     }
     for attempt in range(5):
         try:
@@ -83,89 +113,103 @@ def invoke_nova_lite(prompt: str) -> str:
                 raise
 
 
-def fetch_pollinations_image(title: str, tagline: str, script_lines: list) -> bytes:
-    """
-    Call Pollinations.ai Flux to generate a cartoon/illustrated Bollywood movie poster.
-    Pulls title, tagline, and 2 concrete script lines so the image is story-specific.
-    Returns raw image bytes (JPEG).
-    """
-    import time
+def parse_trailer_json(raw_text: str) -> dict:
+    """Strip markdown fences and parse trailer JSON from Nova Lite output."""
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```")[1]
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+    return json.loads(cleaned.strip())
 
-    # Pull up to 2 of the most action/imagery-rich lines (lines 1 and 2, skipping line 0
-    # which is often a scene-setter intro). Fall back gracefully if fewer lines exist.
-    action_lines = script_lines[1:3] if len(script_lines) >= 3 else script_lines[:2]
+
+def fetch_pollinations_image(title: str, tagline: str,
+                             script_lines: list, genre_style: str = "") -> bytes:
+    """Generate a Bollywood poster via Pollinations Flux. Returns JPEG bytes."""
+    import time
+    action_lines  = script_lines[1:3] if len(script_lines) >= 3 else script_lines[:2]
     scene_details = " | ".join(action_lines) if action_lines else (script_lines[0] if script_lines else "")
 
-    image_prompt = (
-        f"Bollywood movie poster style, cartoon-illustrated style, "
-        f"movie title: {title}, "
-        f"tagline: {tagline}, "
-        f"scene: {scene_details}, "
+    base_style = (
+        "Bollywood movie poster style, cartoon-illustrated style, "
         "vibrant colors, dramatic pose, fun and playful, high contrast, "
         "bold poster composition, expressive cartoon characters in Indian film style, "
-        "bright saffron yellow and magenta pink and deep purple color palette, "
-        "ornate decorative border, cinematic lighting, "
-        "no text overlays, no watermarks, sharp detail"
+        "ornate decorative border, cinematic lighting, no text overlays, no watermarks, sharp detail"
     )
+    style = genre_style if genre_style else base_style
 
+    image_prompt = (
+        f"{style}, "
+        f"movie title concept: {title}, tagline: {tagline}, scene: {scene_details}"
+    )
     logger.info("=== POLLINATIONS IMAGE PROMPT ===\n%s\n=== END PROMPT ===", image_prompt)
 
-    encoded_prompt = urllib.parse.quote(image_prompt)
-    url = (
-        f"{POLLINATIONS_BASE}/{encoded_prompt}"
-        "?width=512&height=768&model=flux&nologo=true"
-    )
+    encoded = urllib.parse.quote(image_prompt)
+    url = f"{POLLINATIONS_BASE}/{encoded}?width=512&height=768&model=flux&nologo=true"
 
     for attempt in range(4):
         try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "BollywoodifyMyDay/1.0"},
-            )
+            req = urllib.request.Request(url, headers={"User-Agent": "BollywoodifyMyDay/1.0"})
             with urllib.request.urlopen(req, timeout=55) as resp:
                 if resp.status == 200:
                     data = resp.read()
                     logger.info("Pollinations returned %d bytes", len(data))
                     return data
-                raise RuntimeError(f"Pollinations returned HTTP {resp.status}")
+                raise RuntimeError(f"Pollinations HTTP {resp.status}")
         except Exception as exc:
             if attempt < 3:
                 wait = (2 ** attempt) + 1
-                logger.warning("Pollinations attempt %d failed (%s), retrying in %ss...",
-                               attempt + 1, exc, wait)
+                logger.warning("Pollinations attempt %d failed: %s, retry in %ss", attempt + 1, exc, wait)
                 time.sleep(wait)
             else:
-                raise RuntimeError(f"Pollinations failed after retries: {exc}") from exc
+                raise RuntimeError(f"Pollinations failed: {exc}") from exc
 
 
-def upload_poster(image_bytes: bytes, ext: str = "jpg") -> str:
-    """Upload image to S3 posters/ prefix, return the permanent public URL."""
-    key = f"posters/{uuid.uuid4()}.{ext}"
-    s3.put_object(
-        Bucket=BUCKET_NAME,
-        Key=key,
-        Body=image_bytes,
-        ContentType=f"image/{ext}",
-    )
+def upload_file(key: str, data: bytes, content_type: str) -> str:
+    """Upload bytes to S3 and return the permanent public URL."""
+    s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=data, ContentType=content_type)
     url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{key}"
-    logger.info("Uploaded poster: %s", url)
+    logger.info("Uploaded: %s", url)
     return url
 
 
 def log_to_dynamo(entry_id: str, day_text: str, title: str,
                   tagline: str, poster_url: str) -> None:
-    """Write generation record to DynamoDB (best-effort, non-fatal)."""
     try:
         table.put_item(Item={
-            "id":        entry_id,
-            "dayText":   day_text,
-            "title":     title,
-            "tagline":   tagline,
-            "posterUrl": poster_url,
+            "id": entry_id, "dayText": day_text, "title": title,
+            "tagline": tagline, "posterUrl": poster_url,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except ClientError as exc:
         logger.warning("DynamoDB write failed (non-fatal): %s", exc)
+
+
+def build_trailer_ssml(title: str, tagline: str, script: list) -> str:
+    """
+    Build SSML for Polly Matthew neural voice.
+    Supported: speak, break, p, prosody rate (named or %), volume
+    NOT supported by Matthew neural: emphasis, prosody pitch
+    """
+    lines_ssml = ""
+    for line in script:
+        lines_ssml += (
+            f'<p><prosody rate="slow">{line}</prosody>'
+            '<break time="700ms"/></p>'
+        )
+
+    ssml = (
+        '<speak>'
+        '<break time="500ms"/>'
+        f'{lines_ssml}'
+        '<break time="900ms"/>'
+        f'<prosody rate="x-slow" volume="loud">{title}</prosody>'
+        '<break time="700ms"/>'
+        f'<prosody rate="slow">{tagline}</prosody>'
+        '<break time="800ms"/>'
+        '</speak>'
+    )
+    return ssml
 
 
 # ── action handlers ───────────────────────────────────────────────────────────
@@ -175,7 +219,6 @@ def handle_trailer(body: dict) -> dict:
     if not day_text:
         return cors_response(400, {"error": "dayText is required"})
 
-    # 1. Generate script via Nova Lite ─────────────────────────────────────────
     text_prompt = f"""You are a dramatic Bollywood movie trailer narrator.
 The user's day: "{day_text}"
 
@@ -184,57 +227,158 @@ Use this exact structure:
 {{
   "title": "DRAMATIC TITLE IN CAPS",
   "tagline": "One unforgettable line here",
-  "script": [
-    "Line 1 of voiceover...",
-    "Line 2...",
-    "Line 3...",
-    "Line 4..."
-  ]
+  "script": ["Line 1", "Line 2", "Line 3", "Line 4"]
 }}
 
-Rules:
-- title: 3-7 words, ALL CAPS
-- tagline: maximum 15 words, punchy
-- script: exactly 4-6 lines, over-the-top dramatic Bollywood narrator tone
-- Return raw JSON only — nothing else."""
+Rules: title 3-7 words ALL CAPS, tagline max 15 words,
+script 4-6 lines over-the-top dramatic Bollywood narrator tone.
+Return raw JSON only."""
 
-    logger.info("Calling Nova Lite for trailer script...")
-    raw_text = invoke_nova_lite(text_prompt)
-    logger.info("Nova Lite raw response: %.300s", raw_text)
-
-    # Strip markdown fences if model wraps output anyway
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("```")[1]
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-    cleaned = cleaned.strip()
+    logger.info("Calling Nova Lite for trailer...")
+    raw = invoke_nova_lite(text_prompt)
+    logger.info("Nova Lite response: %.300s", raw)
 
     try:
-        parsed = json.loads(cleaned)
+        parsed = parse_trailer_json(raw)
     except json.JSONDecodeError as exc:
-        logger.error("JSON parse failed: %s | Raw: %.300s", exc, raw_text)
+        logger.error("JSON parse failed: %s | Raw: %.300s", exc, raw)
         return cors_response(502, {"error": "Model returned malformed JSON. Please try again."})
 
     title   = parsed.get("title", "UNTITLED BLOCKBUSTER")
     tagline = parsed.get("tagline", "")
     script  = parsed.get("script", [])
 
-    # 2. Generate poster via Pollinations.ai Flux ──────────────────────────────
-    logger.info("Calling Pollinations.ai for poster image...")
     image_bytes = fetch_pollinations_image(title, tagline, script)
-
-    # 3. Upload to S3 ──────────────────────────────────────────────────────────
-    poster_url = upload_poster(image_bytes, ext="jpg")
-
-    # 4. Log to DynamoDB (non-fatal) ───────────────────────────────────────────
+    poster_url  = upload_file(f"posters/{uuid.uuid4()}.jpg", image_bytes, "image/jpeg")
     log_to_dynamo(str(uuid.uuid4()), day_text, title, tagline, poster_url)
 
     return cors_response(200, {
-        "title":     title,
-        "tagline":   tagline,
-        "script":    script,
-        "posterUrl": poster_url,
+        "title": title, "tagline": tagline, "script": script, "posterUrl": poster_url,
+    })
+
+
+def handle_remix(body: dict) -> dict:
+    """Re-generate trailer + poster in a chosen genre tone."""
+    day_text = (body.get("dayText") or "").strip()
+    genre    = (body.get("genre")   or "").strip().lower()
+
+    if not day_text:
+        return cors_response(400, {"error": "dayText is required"})
+    if genre not in GENRE_STYLES:
+        return cors_response(400, {"error": f"Unknown genre '{genre}'. Choose from: {', '.join(GENRE_STYLES)}"})
+
+    genre_cfg = GENRE_STYLES[genre]
+
+    text_prompt = f"""You are a Bollywood movie trailer narrator specialising in {genre.upper()} films.
+The user's day: "{day_text}"
+Genre tone: {genre_cfg['tone']}
+
+Rewrite this day as a {genre.upper()} Bollywood movie trailer.
+Respond ONLY with valid JSON — no markdown, no code fences, no extra text.
+Use this exact structure:
+{{
+  "title": "GENRE TITLE IN CAPS",
+  "tagline": "One unforgettable {genre} line here",
+  "script": ["Line 1", "Line 2", "Line 3", "Line 4"]
+}}
+
+Rules: title 3-7 words ALL CAPS, tagline max 15 words,
+script 4-6 lines matching the {genre.upper()} genre tone exactly.
+Return raw JSON only."""
+
+    logger.info("Calling Nova Lite for %s remix...", genre)
+    raw = invoke_nova_lite(text_prompt)
+
+    try:
+        parsed = parse_trailer_json(raw)
+    except json.JSONDecodeError as exc:
+        logger.error("Remix JSON parse failed: %s", exc)
+        return cors_response(502, {"error": "Model returned malformed JSON. Please try again."})
+
+    title   = parsed.get("title", "UNTITLED REMIX")
+    tagline = parsed.get("tagline", "")
+    script  = parsed.get("script", [])
+
+    image_bytes = fetch_pollinations_image(title, tagline, script, genre_style=genre_cfg["poster"])
+    poster_url  = upload_file(f"posters/{uuid.uuid4()}.jpg", image_bytes, "image/jpeg")
+
+    return cors_response(200, {
+        "title": title, "tagline": tagline, "script": script,
+        "posterUrl": poster_url, "genre": genre,
+    })
+
+
+def handle_narrate(body: dict) -> dict:
+    """
+    Synthesise Polly narration + speech marks for a trailer.
+    Caches both in S3 under the same uuid so replays are free.
+    Returns: { audioUrl, speechMarks, cached }
+    """
+    title   = (body.get("title")   or "").strip()
+    tagline = (body.get("tagline") or "").strip()
+    script  = body.get("script", [])
+    # Optional: client passes posterId (uuid part of posterUrl) so we can check cache
+    poster_id = (body.get("posterId") or "").strip()
+
+    if not title or not script:
+        return cors_response(400, {"error": "title and script are required"})
+
+    # ── Cache check ────────────────────────────────────────────────────────────
+    audio_key  = f"audio/{poster_id}.mp3"   if poster_id else None
+    marks_key  = f"audio/{poster_id}.json"  if poster_id else None
+
+    if poster_id:
+        try:
+            s3.head_object(Bucket=BUCKET_NAME, Key=audio_key)
+            # Both files exist — return cached URLs
+            audio_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{audio_key}"
+            marks_obj = s3.get_object(Bucket=BUCKET_NAME, Key=marks_key)
+            marks_data = json.loads(marks_obj["Body"].read().decode("utf-8"))
+            logger.info("Returning cached narration for %s", poster_id)
+            return cors_response(200, {
+                "audioUrl": audio_url, "speechMarks": marks_data, "cached": True,
+            })
+        except ClientError:
+            pass  # Not cached yet — generate
+
+    # ── Build SSML ─────────────────────────────────────────────────────────────
+    ssml = build_trailer_ssml(title, tagline, script)
+    logger.info("Synthesising Polly audio (Matthew neural)...")
+
+    # ── Synthesise audio (MP3) ─────────────────────────────────────────────────
+    audio_resp = polly.synthesize_speech(
+        Text=ssml,
+        TextType="ssml",
+        OutputFormat="mp3",
+        VoiceId="Matthew",
+        Engine="neural",
+    )
+    audio_bytes = audio_resp["AudioStream"].read()
+
+    # ── Synthesise speech marks (sentence timing) ──────────────────────────────
+    marks_resp = polly.synthesize_speech(
+        Text=ssml,
+        TextType="ssml",
+        OutputFormat="json",
+        SpeechMarkTypes=["sentence", "word"],
+        VoiceId="Matthew",
+        Engine="neural",
+    )
+    # Polly returns one JSON object per line (not a JSON array)
+    raw_marks = marks_resp["AudioStream"].read().decode("utf-8")
+    marks_list = [json.loads(line) for line in raw_marks.strip().splitlines() if line.strip()]
+
+    # ── Upload to S3 ───────────────────────────────────────────────────────────
+    # Use a fresh uuid if no posterId was provided
+    cache_id  = poster_id or str(uuid.uuid4())
+    audio_key = f"audio/{cache_id}.mp3"
+    marks_key = f"audio/{cache_id}.json"
+
+    audio_url = upload_file(audio_key, audio_bytes, "audio/mpeg")
+    upload_file(marks_key, json.dumps(marks_list).encode("utf-8"), "application/json")
+
+    return cors_response(200, {
+        "audioUrl": audio_url, "speechMarks": marks_list, "cached": False,
     })
 
 
@@ -252,22 +396,18 @@ Tagline: "{tagline}"
 The day that inspired it: "{day_text}"
 
 Write a dramatic 3-4 paragraph short story based on this day.
-Tone: over-the-top Bollywood blockbuster — full of emotion, dramatic twists,
-cinematic flair, rich imagery, and filmy dialogue.
-Do NOT use bullet points or headers. Return plain paragraphs only.
-Each paragraph should be 3-5 sentences."""
+Tone: over-the-top Bollywood blockbuster — emotion, dramatic twists, cinematic flair.
+Plain paragraphs only, no bullets or headers. Each paragraph 3-5 sentences."""
 
-    logger.info("Calling Nova Lite for full story...")
     story_text = invoke_nova_lite(story_prompt)
-
     return cors_response(200, {"story": story_text.strip()})
 
 
 def handle_gallery() -> dict:
     try:
         result = table.scan(Limit=50)
-        items  = result.get("Items", [])
-        items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        items  = sorted(result.get("Items", []),
+                        key=lambda x: x.get("timestamp", ""), reverse=True)
         return cors_response(200, {"entries": items[:10]})
     except ClientError as exc:
         logger.error("DynamoDB scan failed: %s", exc)
@@ -279,30 +419,30 @@ def handle_gallery() -> dict:
 def handler(event: dict, context) -> dict:
     logger.info("Event: %.500s", json.dumps(event))
 
-    # CORS preflight
     method = event.get("requestContext", {}).get("http", {}).get("method", "")
     if method == "OPTIONS":
         return cors_response(200, {})
 
-    # Gallery: GET /gallery
     route = event.get("routeKey", "")
     if route == "GET /gallery" or method == "GET":
         return handle_gallery()
 
-    # Parse body — support both API Gateway (body is a string) and direct invocation
     if "body" in event:
-        raw_body = event.get("body") or "{}"
         try:
-            body = json.loads(raw_body)
+            body = json.loads(event.get("body") or "{}")
         except json.JSONDecodeError:
             return cors_response(400, {"error": "Invalid JSON body"})
     else:
-        body = event  # direct Lambda invocation
+        body = event
 
     action = body.get("action", "trailer")
 
     if action == "trailer":
         return handle_trailer(body)
+    elif action == "remix":
+        return handle_remix(body)
+    elif action == "narrate":
+        return handle_narrate(body)
     elif action == "story":
         return handle_story(body)
     elif action == "gallery":

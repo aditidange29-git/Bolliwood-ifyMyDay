@@ -906,3 +906,243 @@ button { cursor: pointer; font-family: inherit; }
   white-space: normal;
   line-height: 1.4;
 }
+
+/* ── Poster column (wraps poster + narrator player) ─────────────────────────── */
+.poster-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* ── Script line active (karaoke highlight) ──────────────────────────────────── */
+.script-line--active {
+  background: linear-gradient(90deg, #ede9fe 0%, #fce7f3 100%);
+  border-left-color: var(--pink) !important;
+  color: var(--text) !important;
+  font-weight: 600;
+  transform: translateX(4px);
+  transition: background 0.2s, transform 0.2s, border-left-color 0.2s;
+}
+
+/* ── Narrator player ─────────────────────────────────────────────────────────── */
+.narrator-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+/* Pulsing glow when idle — draws attention before first click */
+@keyframes glowPulseRing {
+  0%, 100% { box-shadow: 0 0 0 0   rgba(124, 58, 237, 0.4); }
+  50%       { box-shadow: 0 0 0 10px rgba(124, 58, 237, 0); }
+}
+
+.narrator-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid var(--purple);
+  background: var(--bg-card);
+  color: var(--purple);
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s, box-shadow 0.18s, background 0.18s, color 0.18s;
+  animation: glowPulseRing 2.2s ease-in-out infinite;
+  position: relative;
+}
+
+.narrator-btn:hover:not(:disabled) {
+  background: var(--grad-main);
+  color: #fff;
+  border-color: transparent;
+  transform: scale(1.08);
+  animation: none;
+  box-shadow: 0 4px 18px rgba(124, 58, 237, 0.4);
+}
+
+.narrator-btn--playing {
+  background: var(--grad-main);
+  color: #fff;
+  border-color: transparent;
+  animation: none;
+}
+
+.narrator-btn--loading {
+  border-color: var(--border-mid);
+  animation: none;
+}
+
+.narrator-btn__icon {
+  line-height: 1;
+  font-style: normal;
+}
+
+/* Spinner inside button */
+.narrator-btn__spinner {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid var(--border-mid);
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  display: block;
+}
+
+.narrator-hint {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-align: center;
+  max-width: 120px;
+  line-height: 1.3;
+}
+
+.narrator-hint--error {
+  color: var(--pink);
+}
+
+/* ── Action bar ──────────────────────────────────────────────────────────────── */
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--text); /* near-black */
+  border-radius: var(--r-pill);
+  padding: 8px 14px;
+  width: fit-content;
+  margin: 20px auto 0;
+  box-shadow: var(--shadow-md);
+}
+
+.action-bar__btn {
+  background: transparent;
+  border: none;
+  border-radius: var(--r-pill);
+  color: rgba(255,255,255,0.85);
+  font-size: 1rem;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.18s, transform 0.15s, color 0.18s;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.action-bar__btn:hover {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  transform: scale(1.08);
+}
+
+.action-bar__btn--primary {
+  background: var(--grad-main);
+  color: #fff;
+  padding: 6px 16px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.action-bar__btn--primary:hover {
+  filter: brightness(1.1);
+  background: var(--grad-main);
+}
+
+.action-bar__btn--liked {
+  color: #ff6b8a;
+}
+
+.action-bar__divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+
+.action-bar__icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.action-bar__label {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+/* ── Genre remix ─────────────────────────────────────────────────────────────── */
+.genre-remix {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.genre-remix__label {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-mid);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.genre-remix__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.genre-pill {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-mid);
+  border-radius: var(--r-pill);
+  color: var(--text-mid);
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 7px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.18s, border-color 0.18s, color 0.18s,
+              transform 0.15s, box-shadow 0.18s;
+}
+
+.genre-pill:hover:not(:disabled) {
+  background: var(--grad-soft);
+  border-color: var(--purple-light);
+  color: var(--purple);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.18);
+}
+
+.genre-pill--active {
+  background: var(--grad-main);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.35);
+}
+
+.genre-pill--active:hover {
+  filter: brightness(1.07);
+  background: var(--grad-main);
+  color: #fff;
+}
+
+.genre-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.genre-pill__emoji {
+  font-size: 1rem;
+}

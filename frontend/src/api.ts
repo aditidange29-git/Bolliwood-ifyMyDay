@@ -1,4 +1,11 @@
-import type { TrailerResponse, StoryResponse, GalleryResponse } from './types';
+import type {
+  TrailerResponse,
+  RemixResponse,
+  StoryResponse,
+  NarrateResponse,
+  GalleryResponse,
+  Genre,
+} from './types';
 
 const API_URL = import.meta.env.VITE_API_URL as string;
 
@@ -19,17 +26,12 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
   return data as T;
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { method: 'GET' });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return data as T;
-}
-
 export async function generateTrailer(dayText: string): Promise<TrailerResponse> {
   return post<TrailerResponse>('/bollywood-ify', { action: 'trailer', dayText });
+}
+
+export async function remixTrailer(dayText: string, genre: Genre): Promise<RemixResponse> {
+  return post<RemixResponse>('/bollywood-ify', { action: 'remix', dayText, genre });
 }
 
 export async function generateStory(
@@ -40,6 +42,20 @@ export async function generateStory(
   return post<StoryResponse>('/bollywood-ify', { action: 'story', dayText, title, tagline });
 }
 
+export async function narrateTrailer(
+  title: string,
+  tagline: string,
+  script: string[],
+  posterId: string,
+): Promise<NarrateResponse> {
+  return post<NarrateResponse>('/bollywood-ify', {
+    action: 'narrate', title, tagline, script, posterId,
+  });
+}
+
 export async function fetchGallery(): Promise<GalleryResponse> {
-  return get<GalleryResponse>('/gallery');
+  const res = await fetch(`${API_URL}/gallery`, { method: 'GET' });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
+  return data as GalleryResponse;
 }
