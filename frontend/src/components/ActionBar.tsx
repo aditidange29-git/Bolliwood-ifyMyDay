@@ -87,17 +87,27 @@ export default function ActionBar({ result, onNew }: Props) {
       </button>
 
       {/* Download poster */}
-      <a
+      <button
         className="action-bar__btn"
-        href={result.posterUrl}
-        download={`${result.title.replace(/\s+/g, '-')}-poster.jpg`}
-        target="_blank"
-        rel="noopener noreferrer"
+        onClick={async () => {
+          try {
+            const res = await fetch(result.posterUrl);
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${result.title.replace(/\s+/g, '-')}-poster.jpg`;
+            a.click();
+            URL.revokeObjectURL(url);
+          } catch {
+            window.open(result.posterUrl, '_blank');
+          }
+        }}
         title="Download poster"
         aria-label="Download poster"
       >
         <span className="action-bar__icon">⬇</span>
-      </a>
+      </button>
     </div>
   );
 }

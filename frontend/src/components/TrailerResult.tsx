@@ -75,7 +75,6 @@ export default function TrailerResult({
             title={result.title}
             tagline={result.tagline}
             script={result.script}
-            posterUrl={result.posterUrl}
             posterId={posterId}
             onLineActive={handleLineActive}
           />

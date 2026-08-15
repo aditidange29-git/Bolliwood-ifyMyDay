@@ -47,6 +47,5 @@ export type AppState =
   | 'idle'
   | 'loading_trailer'
   | 'trailer_ready'
-  | 'loading_remix'
   | 'loading_story'
   | 'story_ready';

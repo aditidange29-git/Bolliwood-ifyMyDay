@@ -1,13 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { narrateTrailer } from '../api';
-import type { SpeechMark } from '../types';
 
 interface Props {
   title: string;
   tagline: string;
   script: string[];
-  posterUrl: string;
-  /** uuid portion of posterUrl, used as cache key */
+  /** uuid portion of posterUrl, used as S3 cache key */
   posterId: string;
   /** Called with index of the script line currently being spoken (-1 = none) */
   onLineActive: (index: number) => void;
@@ -22,19 +20,43 @@ export default function NarratorPlayer({
   const [errorMsg,    setErrorMsg]    = useState('');
 
   const audioRef      = useRef<HTMLAudioElement | null>(null);
-  const marksRef      = useRef<SpeechMark[]>([]);
   const rafRef        = useRef<number>(0);
   const activeLineRef = useRef<number>(-1);
-
-  // Map sentence speech marks to script line indices.
-  // Polly sentence marks contain the rendered sentence text; we match by index order.
   const sentenceMarks = useRef<{ time: number; lineIndex: number }[]>([]);
 
-  const cancelRaf = () => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-  };
+  const cancelRaf = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+  }, []);
 
-  // Tick: check audio currentTime against speech marks to highlight lines
+  const stopAudio = useCallback(() => {
+    cancelRaf();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.onended  = null;
+      audioRef.current.onerror  = null;
+      audioRef.current = null;
+    }
+    activeLineRef.current = -1;
+    onLineActive(-1);
+  }, [cancelRaf, onLineActive]);
+
+  // Reset player when the posterId changes (new trailer or remix)
+  useEffect(() => {
+    stopAudio();
+    setPlayerState('idle');
+    setErrorMsg('');
+    sentenceMarks.current = [];
+  }, [posterId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopAudio();
+  }, [stopAudio]);
+
+  // RAF tick: sync audio position to script line highlights
   const tick = useCallback(() => {
     const audio = audioRef.current;
     if (!audio || audio.paused) return;
@@ -53,6 +75,7 @@ export default function NarratorPlayer({
   }, [onLineActive]);
 
   async function handlePlay() {
+    // Toggle pause/resume
     if (playerState === 'paused' && audioRef.current) {
       audioRef.current.play();
       setPlayerState('playing');
@@ -65,17 +88,26 @@ export default function NarratorPlayer({
       cancelRaf();
       return;
     }
+    // Replay from done
+    if (playerState === 'done' && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      activeLineRef.current = -1;
+      onLineActive(-1);
+      audioRef.current.play();
+      setPlayerState('playing');
+      rafRef.current = requestAnimationFrame(tick);
+      return;
+    }
 
-    // Fresh play — fetch narration
+    // Fresh fetch + play
     setPlayerState('loading');
     setErrorMsg('');
     onLineActive(-1);
 
     try {
       const data = await narrateTrailer(title, tagline, script, posterId);
-      marksRef.current = data.speechMarks;
 
-      // Build sentence → line index map
+      // Map sentence marks → script line indices
       const sentences = data.speechMarks.filter(m => m.type === 'sentence');
       sentenceMarks.current = sentences.map((sm, i) => ({
         time: sm.time,
@@ -107,15 +139,6 @@ export default function NarratorPlayer({
     }
   }
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cancelRaf();
-      audioRef.current?.pause();
-      onLineActive(-1);
-    };
-  }, [onLineActive]);
-
   const isLoading = playerState === 'loading';
   const isPlaying = playerState === 'playing';
   const isDone    = playerState === 'done';
@@ -123,11 +146,15 @@ export default function NarratorPlayer({
   return (
     <div className="narrator-player">
       <button
-        className={`narrator-btn${isPlaying ? ' narrator-btn--playing' : ''}${isLoading ? ' narrator-btn--loading' : ''}`}
+        className={[
+          'narrator-btn',
+          isPlaying ? 'narrator-btn--playing' : '',
+          isLoading ? 'narrator-btn--loading' : '',
+        ].filter(Boolean).join(' ')}
         onClick={handlePlay}
         disabled={isLoading}
-        title={isPlaying ? 'Pause narration' : 'Play trailer narration'}
-        aria-label={isPlaying ? 'Pause' : isLoading ? 'Loading narration…' : 'Play trailer narration'}
+        title={isPlaying ? 'Pause narration' : isDone ? 'Replay narration' : 'Play trailer narration'}
+        aria-label={isPlaying ? 'Pause' : isLoading ? 'Loading narration…' : isDone ? 'Replay' : 'Play trailer narration'}
         aria-busy={isLoading}
       >
         {isLoading ? (
@@ -145,6 +172,9 @@ export default function NarratorPlayer({
       )}
       {isLoading && (
         <span className="narrator-hint">Generating narration…</span>
+      )}
+      {playerState === 'paused' && (
+        <span className="narrator-hint">Paused</span>
       )}
       {playerState === 'error' && (
         <span className="narrator-hint narrator-hint--error">{errorMsg}</span>

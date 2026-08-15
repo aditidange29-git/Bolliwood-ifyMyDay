@@ -89,6 +89,7 @@ export default function App() {
     setError(null);
     setActiveGenre(null);
     setDayText('');
+    setIsRemixing(false);
     setAppState('idle');
   }, []);
 
@@ -133,7 +134,7 @@ export default function App() {
             </div>
             <InputForm
               onSubmit={handleGenerate}
-              isLoading={isLoadingTrailer || isLoadingStory}
+              isLoading={isLoadingTrailer || isLoadingStory || isRemixing}
             />
           </div>
         )}
@@ -171,7 +172,7 @@ export default function App() {
         {isLoadingStory && <LoadingScreen message="Writing the dramatic screenplay…" />}
 
         {/* Full story — shown below trailer, no action bar */}
-        {showStory && (
+        {showStory && !isLoadingStory && (
           <>
             <div className="divider" aria-hidden="true">
               <span className="divider__icon">📜</span>
