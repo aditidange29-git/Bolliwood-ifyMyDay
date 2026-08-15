@@ -124,28 +124,46 @@ def parse_trailer_json(raw_text: str) -> dict:
 
 
 def fetch_pollinations_image(title: str, tagline: str,
-                             script_lines: list, genre_style: str = "") -> bytes:
-    """Generate a Bollywood poster via Pollinations Flux. Returns JPEG bytes."""
+                             visual_scene: str = "",
+                             genre_style: str = "") -> bytes:
+    """
+    Generate a Bollywood movie poster via Pollinations Flux (model=flux, nologo=true).
+    Uses a scene-literal prompt anchored to visual_scene — a one-sentence description
+    of the key visual moment from the story — rather than abstract mood words.
+    Returns JPEG bytes.
+    """
     import time
-    action_lines  = script_lines[1:3] if len(script_lines) >= 3 else script_lines[:2]
-    scene_details = " | ".join(action_lines) if action_lines else (script_lines[0] if script_lines else "")
 
-    base_style = (
-        "Bollywood movie poster style, cartoon-illustrated style, "
-        "vibrant colors, dramatic pose, fun and playful, high contrast, "
-        "bold poster composition, expressive cartoon characters in Indian film style, "
-        "ornate decorative border, cinematic lighting, no text overlays, no watermarks, sharp detail"
-    )
-    style = genre_style if genre_style else base_style
+    # ── Scene-literal prompt ───────────────────────────────────────────────────
+    # visual_scene is something like "a student sprinting toward a bus with papers flying"
+    scene = visual_scene if visual_scene else "a dramatic Indian protagonist in an expressive pose"
 
-    image_prompt = (
-        f"{style}, "
-        f"movie title concept: {title}, tagline: {tagline}, scene: {scene_details}"
-    )
+    if genre_style:
+        # Genre remix — blend scene with genre-specific art direction
+        image_prompt = (
+            f"Bollywood movie poster, {genre_style}, "
+            f"showing {scene}, "
+            f"bold poster typography space at bottom for title '{title}', "
+            "2D animated movie poster style, Pixar-meets-Bollywood illustration, "
+            "bold flat colors, exaggerated expressions, comic-book energy, "
+            "vibrant saturated colors, dramatic lighting, no watermarks"
+        )
+    else:
+        # Default — scene-literal cartoon poster
+        image_prompt = (
+            f"Bollywood movie poster of {scene}, "
+            "dramatic lighting, exaggerated cartoon-illustrated style, "
+            "2D animated movie poster style, Pixar-meets-Bollywood illustration, "
+            "bold flat colors, exaggerated expressions, comic-book energy, "
+            f"bold poster typography at the bottom reading '{title}', "
+            "vibrant saturated colors, movie poster composition with title text space, "
+            "no watermarks, sharp detail"
+        )
+
     logger.info("=== POLLINATIONS IMAGE PROMPT ===\n%s\n=== END PROMPT ===", image_prompt)
 
     encoded = urllib.parse.quote(image_prompt)
-    url = f"{POLLINATIONS_BASE}/{encoded}?width=512&height=768&model=flux&nologo=true"
+    url = f"{POLLINATIONS_BASE}/{encoded}?width=512&height=768&model=flux&nologo=true&enhance=true"
 
     for attempt in range(4):
         try:
@@ -227,12 +245,16 @@ Use this exact structure:
 {{
   "title": "DRAMATIC TITLE IN CAPS",
   "tagline": "One unforgettable line here",
-  "script": ["Line 1", "Line 2", "Line 3", "Line 4"]
+  "script": ["Line 1", "Line 2", "Line 3", "Line 4"],
+  "visual_scene": "one literal sentence describing the key visual moment of the day, e.g. a college student sprinting toward a bus with papers flying out of their bag"
 }}
 
-Rules: title 3-7 words ALL CAPS, tagline max 15 words,
-script 4-6 lines over-the-top dramatic Bollywood narrator tone.
-Return raw JSON only."""
+Rules:
+- title: 3-7 words ALL CAPS
+- tagline: max 15 words, punchy
+- script: 4-6 lines, over-the-top dramatic Bollywood narrator tone
+- visual_scene: ONE sentence, concrete and literal — describe the person (infer student/office worker/etc from context) and the specific physical action that is the heart of the story. No abstract moods. Think: what would the KEY shot in the movie poster show?
+- Return raw JSON only — nothing else."""
 
     logger.info("Calling Nova Lite for trailer...")
     raw = invoke_nova_lite(text_prompt)
@@ -244,16 +266,19 @@ Return raw JSON only."""
         logger.error("JSON parse failed: %s | Raw: %.300s", exc, raw)
         return cors_response(502, {"error": "Model returned malformed JSON. Please try again."})
 
-    title   = parsed.get("title", "UNTITLED BLOCKBUSTER")
-    tagline = parsed.get("tagline", "")
-    script  = parsed.get("script", [])
+    title        = parsed.get("title", "UNTITLED BLOCKBUSTER")
+    tagline      = parsed.get("tagline", "")
+    script       = parsed.get("script", [])
+    visual_scene = parsed.get("visual_scene", "")
+    logger.info("visual_scene: %s", visual_scene)
 
-    image_bytes = fetch_pollinations_image(title, tagline, script)
+    image_bytes = fetch_pollinations_image(title, tagline, visual_scene=visual_scene)
     poster_url  = upload_file(f"posters/{uuid.uuid4()}.jpg", image_bytes, "image/jpeg")
     log_to_dynamo(str(uuid.uuid4()), day_text, title, tagline, poster_url)
 
     return cors_response(200, {
-        "title": title, "tagline": tagline, "script": script, "posterUrl": poster_url,
+        "title": title, "tagline": tagline, "script": script,
+        "posterUrl": poster_url, "visualScene": visual_scene,
     })
 
 
@@ -279,11 +304,13 @@ Use this exact structure:
 {{
   "title": "GENRE TITLE IN CAPS",
   "tagline": "One unforgettable {genre} line here",
-  "script": ["Line 1", "Line 2", "Line 3", "Line 4"]
+  "script": ["Line 1", "Line 2", "Line 3", "Line 4"],
+  "visual_scene": "one literal sentence describing the key visual moment for this {genre} version, e.g. a terrified student running down dark corridors"
 }}
 
 Rules: title 3-7 words ALL CAPS, tagline max 15 words,
-script 4-6 lines matching the {genre.upper()} genre tone exactly.
+script 4-6 lines matching the {genre.upper()} genre tone.
+visual_scene: ONE concrete sentence showing the person and key action in {genre} style.
 Return raw JSON only."""
 
     logger.info("Calling Nova Lite for %s remix...", genre)
@@ -295,16 +322,22 @@ Return raw JSON only."""
         logger.error("Remix JSON parse failed: %s", exc)
         return cors_response(502, {"error": "Model returned malformed JSON. Please try again."})
 
-    title   = parsed.get("title", "UNTITLED REMIX")
-    tagline = parsed.get("tagline", "")
-    script  = parsed.get("script", [])
+    title        = parsed.get("title", "UNTITLED REMIX")
+    tagline      = parsed.get("tagline", "")
+    script       = parsed.get("script", [])
+    visual_scene = parsed.get("visual_scene", "")
+    logger.info("Remix visual_scene: %s", visual_scene)
 
-    image_bytes = fetch_pollinations_image(title, tagline, script, genre_style=genre_cfg["poster"])
-    poster_url  = upload_file(f"posters/{uuid.uuid4()}.jpg", image_bytes, "image/jpeg")
+    image_bytes = fetch_pollinations_image(
+        title, tagline,
+        visual_scene=visual_scene,
+        genre_style=genre_cfg["poster"],
+    )
+    poster_url = upload_file(f"posters/{uuid.uuid4()}.jpg", image_bytes, "image/jpeg")
 
     return cors_response(200, {
         "title": title, "tagline": tagline, "script": script,
-        "posterUrl": poster_url, "genre": genre,
+        "posterUrl": poster_url, "genre": genre, "visualScene": visual_scene,
     })
 
 

@@ -3,6 +3,7 @@ export interface TrailerResponse {
   tagline: string;
   script: string[];
   posterUrl: string;
+  visualScene?: string;
 }
 
 export interface RemixResponse extends TrailerResponse {
