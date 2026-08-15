@@ -77,14 +77,12 @@ export default function App() {
       {/* ── Header ── */}
       <header className="header" role="banner">
         <span className="header__icon" aria-hidden="true">🎬</span>
-        <h1 className="header__title">
-          Bollywood<span>-ify</span> My Day
-        </h1>
-        <p className="header__subtitle">Turn your ordinary day into a blockbuster</p>
-        <div className="header__divider" aria-hidden="true">
-          <div className="header__divider-line" />
-          <span className="header__divider-icon">🎞️</span>
-          <div className="header__divider-line" />
+        <h1 className="header__title">Bollywood-ify My Day</h1>
+        <p className="header__subtitle">Turn your ordinary day into a blockbuster ✨</p>
+        <div className="header__pills" aria-hidden="true">
+          <span className="header__pill">🎞️ AI-Powered</span>
+          <span className="header__pill">🎭 Drama Generator</span>
+          <span className="header__pill">🌟 Instant Poster</span>
         </div>
       </header>
 

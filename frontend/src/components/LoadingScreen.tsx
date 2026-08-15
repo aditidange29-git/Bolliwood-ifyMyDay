@@ -3,25 +3,49 @@ interface Props {
 }
 
 const MESSAGES = [
-  'Consulting the stars…',
+  'Cue the dramatic music…',
   'Hiring the orchestra…',
-  'Dramatic pause loading…',
-  'Polishing the dramatics…',
+  'Polishing the melodrama…',
   'Summoning Bollywood magic…',
+  'Adjusting the spotlight…',
 ];
 
 export default function LoadingScreen({ message }: Props) {
   const displayMessage = message ?? MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
 
   return (
-    <div className="loading-screen" role="status" aria-label="Generating your Bollywood experience">
-      <div className="loading-screen__clapboard" aria-hidden="true">🎬</div>
-      <div className="loading-screen__bar" aria-hidden="true">
-        <div className="loading-screen__bar-fill" />
+    <div
+      className="loading-screen"
+      role="status"
+      aria-label="Generating your Bollywood experience"
+    >
+      {/* Film reel spinning */}
+      <span className="loading-reel" aria-hidden="true">🎞️</span>
+
+      {/* Bouncing dots */}
+      <div className="loading-dots" aria-hidden="true">
+        <div className="loading-dot" />
+        <div className="loading-dot" />
+        <div className="loading-dot" />
       </div>
-      <p className="loading-screen__text">{displayMessage}</p>
-      <p className="loading-screen__sub">
-        Generating your poster takes ~30–40 seconds — the drama is worth the wait.
+
+      {/* Gradient shimmer bar */}
+      <div className="loading-bar" aria-hidden="true">
+        <div className="loading-bar-fill" />
+      </div>
+
+      {/* Sparkle burst */}
+      <div className="loading-sparkles" aria-hidden="true">
+        <span>✨</span>
+        <span>🌟</span>
+        <span>💫</span>
+        <span>🌟</span>
+        <span>✨</span>
+      </div>
+
+      <p className="loading-text">{displayMessage}</p>
+      <p className="loading-sub">
+        Your poster takes ~30–40 s — the drama is worth the wait.
       </p>
     </div>
   );
