@@ -1,0 +1,3 @@
+# boto3 and botocore are provided by the Lambda runtime (Python 3.12)
+# No additional dependencies required for this function.
+# If you add new packages, list them here and bundle them in the zip.
