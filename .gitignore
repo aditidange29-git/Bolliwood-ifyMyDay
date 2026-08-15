@@ -1,0 +1,20 @@
+# Build artifacts
+backend/function.zip
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Test scratch files
+backend/test_*.py
+backend/invoke_test*.py
+backend/list_*.py
+backend/set_cors.py
+backend/test-*.json
+backend/test_poster.jpg
+backend/*.jpg
+infra/cors.json
+infra/builderradar-cost-lockdown-build.json
+
+# OS
+.DS_Store
+Thumbs.db
