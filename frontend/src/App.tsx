@@ -5,9 +5,7 @@ import InputForm from './components/InputForm';
 import LoadingScreen from './components/LoadingScreen';
 import TrailerResult from './components/TrailerResult';
 import StoryPanel from './components/StoryPanel';
-import Gallery from './components/Gallery';
 
-// Static titles for the marquee ticker — supplemented by real gallery data at runtime
 const SEED_TITLES = [
   'THE COFFEE OF DESTINY',
   'MONSOON OF THE HEART',
@@ -20,12 +18,11 @@ const SEED_TITLES = [
 ];
 
 export default function App() {
-  const [appState, setAppState]       = useState<AppState>('idle');
-  const [dayText, setDayText]         = useState('');
-  const [trailer, setTrailer]         = useState<TrailerResponse | null>(null);
-  const [story, setStory]             = useState<string | null>(null);
-  const [error, setError]             = useState<string | null>(null);
-  const [galleryTick, setGalleryTick] = useState(0);
+  const [appState, setAppState]           = useState<AppState>('idle');
+  const [dayText, setDayText]             = useState('');
+  const [trailer, setTrailer]             = useState<TrailerResponse | null>(null);
+  const [story, setStory]                 = useState<string | null>(null);
+  const [error, setError]                 = useState<string | null>(null);
   const [marqueeTitles, setMarqueeTitles] = useState<string[]>(SEED_TITLES);
 
   const handleGenerate = useCallback(async (text: string) => {
@@ -39,8 +36,6 @@ export default function App() {
       const result = await generateTrailer(text);
       setTrailer(result);
       setAppState('trailer_ready');
-      setGalleryTick(t => t + 1);
-      // Add new title to marquee
       setMarqueeTitles(prev => [result.title, ...prev].slice(0, 20));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
@@ -68,7 +63,6 @@ export default function App() {
   const showTrailer      = trailer !== null && appState !== 'loading_trailer';
   const showStory        = story !== null;
 
-  // Build marquee text — duplicate for seamless loop
   const marqueeContent = marqueeTitles.join('  ✦  ');
   const marqueeDouble  = `${marqueeContent}  ✦  ${marqueeContent}`;
 
@@ -96,7 +90,7 @@ export default function App() {
       {/* ── Main content ── */}
       <main className="main" id="main-content">
 
-        {/* Input form — always visible unless loading trailer */}
+        {/* Input form */}
         {!isLoadingTrailer && (
           <div className="input-card">
             <div className="input-card__header">
@@ -145,9 +139,6 @@ export default function App() {
             <StoryPanel story={story} />
           </>
         )}
-
-        {/* Gallery */}
-        <Gallery refreshTrigger={galleryTick} />
 
       </main>
 
