@@ -86,29 +86,35 @@ def invoke_nova_lite(prompt: str) -> str:
 def fetch_pollinations_image(title: str, tagline: str, script_lines: list) -> bytes:
     """
     Call Pollinations.ai Flux to generate a cartoon/illustrated Bollywood movie poster.
-    Uses the actual script content so the image is story-relevant.
+    Pulls title, tagline, and 2 concrete script lines so the image is story-specific.
     Returns raw image bytes (JPEG).
     """
     import time
-    # Pull the most vivid script line to anchor the scene
-    scene_hint = script_lines[1] if len(script_lines) > 1 else (script_lines[0] if script_lines else "")
+
+    # Pull up to 2 of the most action/imagery-rich lines (lines 1 and 2, skipping line 0
+    # which is often a scene-setter intro). Fall back gracefully if fewer lines exist.
+    action_lines = script_lines[1:3] if len(script_lines) >= 3 else script_lines[:2]
+    scene_details = " | ".join(action_lines) if action_lines else (script_lines[0] if script_lines else "")
+
     image_prompt = (
-        f"Illustrated cartoon Bollywood movie poster, "
-        f"scene: {scene_hint}, "
-        f"title concept: {title}, "
-        "flat cartoon illustration style, bold outlines, "
-        "vibrant coral red and saffron yellow and ivory white color palette, "
-        "dramatic expressive characters in Indian film style, "
-        "ornate decorative border with geometric patterns, "
-        "cinematic composition, clean modern illustration, "
-        "no text, no watermarks, high quality"
+        f"Bollywood movie poster style, cartoon-illustrated style, "
+        f"movie title: {title}, "
+        f"tagline: {tagline}, "
+        f"scene: {scene_details}, "
+        "vibrant colors, dramatic pose, fun and playful, high contrast, "
+        "bold poster composition, expressive cartoon characters in Indian film style, "
+        "bright saffron yellow and magenta pink and deep purple color palette, "
+        "ornate decorative border, cinematic lighting, "
+        "no text overlays, no watermarks, sharp detail"
     )
+
+    logger.info("=== POLLINATIONS IMAGE PROMPT ===\n%s\n=== END PROMPT ===", image_prompt)
+
     encoded_prompt = urllib.parse.quote(image_prompt)
     url = (
         f"{POLLINATIONS_BASE}/{encoded_prompt}"
         "?width=512&height=768&model=flux&nologo=true"
     )
-    logger.info("Fetching Pollinations image, prompt length: %d", len(image_prompt))
 
     for attempt in range(4):
         try:
