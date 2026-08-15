@@ -76,9 +76,16 @@ export default function App() {
     <div className="app">
       {/* ── Header ── */}
       <header className="header" role="banner">
-        <h1 className="header__title">🎬 Bollywood-ify My Day</h1>
+        <span className="header__icon" aria-hidden="true">🎬</span>
+        <h1 className="header__title">
+          Bollywood<span>-ify</span> My Day
+        </h1>
         <p className="header__subtitle">Turn your ordinary day into a blockbuster</p>
-        <p className="header__stars" aria-hidden="true">✦ ✦ ✦</p>
+        <div className="header__divider" aria-hidden="true">
+          <div className="header__divider-line" />
+          <span className="header__divider-icon">🎞️</span>
+          <div className="header__divider-line" />
+        </div>
       </header>
 
       {/* ── Marquee ticker ── */}
@@ -93,7 +100,13 @@ export default function App() {
 
         {/* Input form — always visible unless loading trailer */}
         {!isLoadingTrailer && (
-          <InputForm onSubmit={handleGenerate} isLoading={isLoadingTrailer || isLoadingStory} />
+          <div className="input-card">
+            <div className="input-card__header">
+              <span className="input-card__icon" aria-hidden="true">🎥</span>
+              <h2 className="input-card__title">Describe Your Day</h2>
+            </div>
+            <InputForm onSubmit={handleGenerate} isLoading={isLoadingTrailer || isLoadingStory} />
+          </div>
         )}
 
         {/* Error */}
@@ -110,7 +123,7 @@ export default function App() {
         {showTrailer && (
           <>
             <div className="divider" aria-hidden="true">
-              <span className="divider__icon">✦</span>
+              <span className="divider__icon">🎞️</span>
             </div>
             <TrailerResult
               result={trailer}
@@ -129,7 +142,7 @@ export default function App() {
         {showStory && (
           <>
             <div className="divider" aria-hidden="true">
-              <span className="divider__icon">✦</span>
+              <span className="divider__icon">📜</span>
             </div>
             <StoryPanel story={story} />
           </>
@@ -143,8 +156,11 @@ export default function App() {
       {/* ── Footer ── */}
       <footer className="footer" role="contentinfo">
         <p className="footer__text">
-          Built with ✦ Nova Lite · Pollinations Flux · AWS Lambda · Amazon S3 · AWS Weekend Challenge
+          Built for AWS Weekend Challenge · Nova Lite · Pollinations Flux · Lambda · S3
         </p>
+        <div className="footer__icons" aria-hidden="true">
+          🎬 🎞️ 🎭 🎟️ 🎦
+        </div>
       </footer>
     </div>
   );

@@ -11,7 +11,9 @@ export default function StoryPanel({ story }: Props) {
 
   return (
     <section className="story-panel" aria-label="Full Bollywood story">
-      <h3 className="story-panel__heading">✦ The Full Story ✦</h3>
+      <h3 className="story-panel__heading">
+        <span>📜</span> The Full Story
+      </h3>
       <div className="story-panel__text">
         {paragraphs.map((para, i) => (
           <p key={i}>{para}</p>

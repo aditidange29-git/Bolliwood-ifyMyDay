@@ -32,10 +32,10 @@ export default function TrailerResult({ result, onGenerateStory, isLoadingStory 
         />
         {/* Curtains sit on top and slide away */}
         <div className={`curtain-left${curtainsOpen ? ' open' : ''}`} aria-hidden="true">
-          <span className="curtain-icon">✦</span>
+          <span className="curtain-icon">🎞️</span>
         </div>
         <div className={`curtain-right${curtainsOpen ? ' open' : ''}`} aria-hidden="true">
-          <span className="curtain-icon">✦</span>
+          <span className="curtain-icon">🎬</span>
         </div>
       </div>
 
@@ -47,7 +47,7 @@ export default function TrailerResult({ result, onGenerateStory, isLoadingStory 
         <div className="script-lines" role="list">
           {result.script.map((line, i) => (
             <div key={i} className="script-line" role="listitem">
-              {line}
+              🎙️ {line}
             </div>
           ))}
         </div>
@@ -59,7 +59,7 @@ export default function TrailerResult({ result, onGenerateStory, isLoadingStory 
             disabled={isLoadingStory}
             aria-busy={isLoadingStory}
           >
-            {isLoadingStory ? '✦ Writing the story…' : '📖 Generate Full Story'}
+            {isLoadingStory ? '⏳ Writing the story…' : '📖 Generate Full Story'}
           </button>
         </div>
       </div>

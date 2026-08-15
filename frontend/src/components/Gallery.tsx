@@ -62,9 +62,8 @@ export default function Gallery({ refreshTrigger }: Props) {
   return (
     <section className="gallery-section" aria-label="Past posters gallery">
       <h3 className="gallery-section__heading">
-        <span>✦</span>
+        <span>🎟️</span>
         <span>Past Blockbusters</span>
-        <span>✦</span>
       </h3>
       <div className="gallery-grid">
         {entries.map(entry => (

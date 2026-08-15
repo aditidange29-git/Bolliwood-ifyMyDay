@@ -83,17 +83,25 @@ def invoke_nova_lite(prompt: str) -> str:
                 raise
 
 
-def fetch_pollinations_image(title: str, tagline: str) -> bytes:
+def fetch_pollinations_image(title: str, tagline: str, script_lines: list) -> bytes:
     """
-    Call Pollinations.ai Flux to generate a Bollywood movie poster image.
+    Call Pollinations.ai Flux to generate a cartoon/illustrated Bollywood movie poster.
+    Uses the actual script content so the image is story-relevant.
     Returns raw image bytes (JPEG).
     """
     import time
+    # Pull the most vivid script line to anchor the scene
+    scene_hint = script_lines[1] if len(script_lines) > 1 else (script_lines[0] if script_lines else "")
     image_prompt = (
-        f"Bollywood movie poster, title: {title}, tagline: {tagline}, "
-        "vibrant red and gold color palette, dramatic cinematic lighting, "
-        "ornate Indian decorative border, heroic central figure, "
-        "Indian film aesthetic, high detail, no text overlays"
+        f"Illustrated cartoon Bollywood movie poster, "
+        f"scene: {scene_hint}, "
+        f"title concept: {title}, "
+        "flat cartoon illustration style, bold outlines, "
+        "vibrant coral red and saffron yellow and ivory white color palette, "
+        "dramatic expressive characters in Indian film style, "
+        "ornate decorative border with geometric patterns, "
+        "cinematic composition, clean modern illustration, "
+        "no text, no watermarks, high quality"
     )
     encoded_prompt = urllib.parse.quote(image_prompt)
     url = (
@@ -208,7 +216,7 @@ Rules:
 
     # 2. Generate poster via Pollinations.ai Flux ──────────────────────────────
     logger.info("Calling Pollinations.ai for poster image...")
-    image_bytes = fetch_pollinations_image(title, tagline)
+    image_bytes = fetch_pollinations_image(title, tagline, script)
 
     # 3. Upload to S3 ──────────────────────────────────────────────────────────
     poster_url = upload_poster(image_bytes, ext="jpg")
