@@ -32,7 +32,7 @@ Type one sentence describing your day. Get back:
 
 ## Live Demo
 
-- **Frontend:** Deployed on Vercel — *(add your Vercel URL here after deployment)*
+- **Frontend:** https://bollywood-ify-my-day.vercel.app
 - **API:** `https://vmny1k24lg.execute-api.us-east-1.amazonaws.com/prod`
 - **Repo:** https://github.com/aditidange29-git/Bolliwood-ifyMyDay
 
